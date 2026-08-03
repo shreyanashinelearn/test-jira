@@ -1,0 +1,40 @@
+name: Defect
+description: Create a Issue Type - Defect
+title: "Defect: "
+labels: ["Defect"]
+
+body:
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      placeholder: Short description of the Defect
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Explain in detail
+      placeholder: Explain the Defect description here
+    validations:
+      required: true
+
+  - type: input
+    id: narappname
+    attributes:
+      label: NAR Application Name
+  
+  - type: input
+    id: Test Summary
+    attributes:
+      label: Test Summary
+      placeholder: Short description of the Test Summary
+      
+  - type: textarea
+    id: Test Description
+    attributes:
+      label: Test Description
+      description: Explain in detail
+      placeholder: Explain the Test description here
