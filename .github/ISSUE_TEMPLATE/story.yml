@@ -1,0 +1,33 @@
+name: Story
+description: Create a user story
+title: "Story: "
+labels: ["story"]
+assignees: []
+
+body:
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      placeholder: Short description of the story
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Explain in detail
+      placeholder: Explain the Story description here
+    validations:
+      required: true
+
+  - type: textarea
+    id: narid
+    attributes:
+      label: NAR ID
+
+  - type: input
+    id: narappname
+    attributes:
+      label: NAR Application Name
