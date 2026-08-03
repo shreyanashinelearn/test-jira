@@ -1,0 +1,34 @@
+name: Epic
+description: Create a Issue Type - Epic
+title: "Epic: "
+labels: ["Epic"]
+
+body:
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      placeholder: Short description of the Epic
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Explain in detail
+      placeholder: Explain the Epic description here
+    validations:
+      required: true
+
+  - type: input
+    id: narappname
+    attributes:
+      label: NAR Application Name
+  
+  - type: textarea
+    id: Issuelink
+    attributes:
+      label: Issue Links
+      description: Provide a link to the related issue
+      placeholder: https://github.com/example/repo/issues/1
