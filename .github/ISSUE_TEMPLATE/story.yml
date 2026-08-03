@@ -1,8 +1,7 @@
 name: Story
-description: Create a user story
+description: Create a Issue Type : Story
 title: "Story: "
 labels: ["story"]
-assignees: []
 
 body:
   - type: input
@@ -21,11 +20,6 @@ body:
       placeholder: Explain the Story description here
     validations:
       required: true
-
-  - type: textarea
-    id: narid
-    attributes:
-      label: NAR ID
 
   - type: input
     id: narappname
