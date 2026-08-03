@@ -29,11 +29,11 @@ body:
   - type: input
     id: Test Summary
     attributes:
-      label: Test Summary
+      label: TestSummary
       placeholder: Short description of the Test Summary
       
   - type: textarea
-    id: Test Description
+    id: TestDescription
     attributes:
       label: Test Description
       description: Explain in detail
