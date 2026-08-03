@@ -27,9 +27,9 @@ body:
       label: NAR Application Name
   
   - type: input
-    id: Test Summary
+    id: TestSummary
     attributes:
-      label: TestSummary
+      label: Test Summary
       placeholder: Short description of the Test Summary
       
   - type: textarea
