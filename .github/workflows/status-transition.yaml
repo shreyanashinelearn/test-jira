@@ -28,108 +28,139 @@ jobs:
         with:
           github-token: ${{ secrets.PROJECT_TOKEN }}
           script: |
+            script: |
             let issue = context.payload.issue;
-            // If the workflow was manually dispatched, an `issue` may not
-            // be present in the event payload. Allow passing an
-            // `issue_number` via `workflow_dispatch` inputs as a fallback.
+
+            // Handle manual trigger
             if (!issue) {
               const inputs = (context.payload && context.payload.inputs) || {};
-              const inputNumber = inputs.issue_number || inputs.issueNumber || '';
+              const inputNumber = inputs.issue_number || '';
               if (inputNumber) {
                 issue = { number: parseInt(inputNumber, 10) };
-                console.log(`Using issue number from inputs: ${issue.number}`);
+                console.log(`Using issue number: ${issue.number}`);
               } else {
-                console.log('No issue in event payload and no issue_number input provided; exiting.');
+                console.log("No issue context. Exiting.");
                 return;
               }
             }
-            
-            // Skip if not triggered by issue event (e.g., workflow_dispatch)
-            if (!issue) {
-              console.log("Workflow not triggered by issue event. Skipping...");
-              return;
-            }
-            // Configure these values
+
             const PROJECT_ID = "PVT_kwDOEp-UH84BfO4c";
             const STATUS_FIELD_ID = "PVTSSF_lADOEp-UH84BfO4czhZjNrU";
-            const OPEN_OPTION_ID = "1716c862";
-            const IN_PROGRESS_OPTION_ID = "f7fade2b";
-            const IN_REVIEW_OPTION_ID = "b10307a0";
-            const IN_TESTING_OPTION_ID = "c8a33234";
-            const DONE_OPTION_ID = "98236657";
-            const BLOCKED_OPTION_ID = "3dc29660";
-            // Get the current project item for this issue
-            const query = `
-              query($owner: String!, $repo: String!, $issueNumber: Int!) {
-                repository(owner: $owner, name: $repo) {
-                  issue(number: $issueNumber) {
-                    projectItems(first: 20) {
-                      nodes {
-                        id
-                        project {
+
+            // Status IDs
+            const STATUS = {
+              OPEN: "1716c862",
+              IN_PROGRESS: "f7fade2b",
+              IN_REVIEW: "b10307a0",
+              TESTING: "c8a33234",
+              DONE: "98236657"
+            };
+
+            // Strict order
+            const FLOW = [
+              STATUS.OPEN,
+              STATUS.IN_PROGRESS,
+              STATUS.IN_REVIEW,
+              STATUS.TESTING,
+              STATUS.DONE
+            ];
+
+            async function updateStatus(itemId, optionId) {
+              const mutation = `
+                mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+                  updateProjectV2ItemFieldValue(
+                    input: {
+                      projectId: $projectId
+                      itemId: $itemId
+                      fieldId: $fieldId
+                      value: { singleSelectOptionId: $optionId }
+                    }
+                  ) {
+                    projectV2Item { id }
+                  }
+                }
+              `;
+
+              await github.graphql(mutation, {
+                projectId: PROJECT_ID,
+                itemId,
+                fieldId: STATUS_FIELD_ID,
+                optionId
+              });
+            }
+
+            async function getProjectItem(issueNumber) {
+              const query = `
+                query($owner: String!, $repo: String!, $issueNumber: Int!) {
+                  repository(owner: $owner, name: $repo) {
+                    issue(number: $issueNumber) {
+                      projectItems(first: 20) {
+                        nodes {
                           id
-                        }
-                        fieldValueByName(name: "Status") {
-                          ... on ProjectV2ItemFieldSingleSelectValue {
-                            optionId
-                            name
+                          project { id }
+                          fieldValueByName(name: "Status") {
+                            ... on ProjectV2ItemFieldSingleSelectValue {
+                              optionId
+                              name
+                            }
                           }
                         }
                       }
                     }
                   }
                 }
-              }
-            `;
-            const result = await github.graphql(query, {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issueNumber: issue.number
-            });
-            const projectItem = result.repository.issue.projectItems.nodes.find(
-              item => item.project.id === PROJECT_ID
-            );
-            if (!projectItem) {
-              console.log("Issue is not in the target Project.");
-              return;
-            }
-            const currentStatus =
-              projectItem.fieldValueByName?.optionId;
-            console.log(`Current status: ${currentStatus}`);
-            // Only allow Open -> In progress.
-            // Any other status is reverted to Open.
-            if (currentStatus !== IN_PROGRESS_OPTION_ID) {
-              console.log("Invalid status transition. Reverting to Open.");
-              const mutation = `
-                mutation(
-                  $projectId: ID!,
-                  $itemId: ID!,
-                  $fieldId: ID!,
-                  $optionId: String!
-                ) {
-                  updateProjectV2ItemFieldValue(
-                    input: {
-                      projectId: $projectId
-                      itemId: $itemId
-                      fieldId: $fieldId
-                      value: {
-                        singleSelectOptionId: $optionId
-                      }
-                    }
-                  ) {
-                    projectV2Item {
-                      id
-                    }
-                  }
-                }
               `;
-              await github.graphql(mutation, {
-                projectId: PROJECT_ID,
-                itemId: projectItem.id,
-                fieldId: STATUS_FIELD_ID,
-                optionId: OPEN_OPTION_ID
+
+              const result = await github.graphql(query, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issueNumber
               });
-              console.log("Status reverted to Open.");
-            } else {
-              console.log("Status is In progress.");
+
+              return result.repository.issue.projectItems.nodes.find(
+                item => item.project.id === PROJECT_ID
+              );
             }
+
+            async function processIssue(issueNumber) {
+              const item = await getProjectItem(issueNumber);
+
+              if (!item) {
+                console.log(`Issue #${issueNumber} not in project`);
+                return;
+              }
+
+              const current = item.fieldValueByName?.optionId;
+              const name = item.fieldValueByName?.name;
+
+              console.log(`Issue #${issueNumber} current: ${name}`);
+
+              // No status → set OPEN
+              if (!current) {
+                console.log("No status → setting OPEN");
+                await updateStatus(item.id, STATUS.OPEN);
+                return;
+              }
+
+              const index = FLOW.indexOf(current);
+
+              // Invalid status → reset
+              if (index === -1) {
+                console.log("Invalid status → reset to OPEN");
+                await updateStatus(item.id, STATUS.OPEN);
+                return;
+              }
+
+              // ❌ Prevent skipping (e.g., OPEN → TESTING / DONE)
+              if (index > 1) {
+                console.log("Skipped stages → reverting to previous");
+
+                const previous = FLOW[index - 1];
+                await updateStatus(item.id, previous);
+                return;
+              }
+
+              console.log("Valid status");
+            }
+
+            await processIssue(issue.number);
