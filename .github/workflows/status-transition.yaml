@@ -51,7 +51,7 @@ jobs:
             }
             // Configure these values
             const PROJECT_ID = "PVT_kwDOEp-UH84BfO4c";
-            const STATUS_FIELD_ID = "PVTSSF_lADOEp-UH84BfO4czhZjNr";
+            const STATUS_FIELD_ID = "PVTSSF_lADOEp-UH84BfO4czhZjNrU";
             const OPEN_OPTION_ID = "1716c862";
             const IN_PROGRESS_OPTION_ID = "f7fade2b";
             const IN_REVIEW_OPTION_ID = "b10307a0";
