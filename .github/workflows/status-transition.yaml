@@ -1,4 +1,4 @@
-name: Enforce Status Transition (open-in-progress)
+name: Enforce Status Transition
 
 on:
   issues:
