@@ -1,0 +1,132 @@
+name: Enforce Status Transition
+
+on:
+  issues:
+    types: [opened, edited]
+  schedule:
+    - cron: "*/5 * * * *"   # every 5 mins (for project changes)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  repository-projects: write
+
+jobs:
+  enforce-status:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate status transition
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PROJECT_TOKEN }}
+          script: |
+
+            const PROJECT_ID = "PVT_kwDOEp-UH84BfO4c";
+            const STATUS_FIELD_ID = "PVTSSF_lADOEp-UH84BfO4czhZjNrU";
+
+            const STATUS_FLOW = [
+              "OPEN",
+              "IN_PROGRESS",
+              "IN_REVIEW",
+              "TESTING",
+              "DONE"
+            ];
+
+            const STATUS_MAP = {
+              OPEN: "1716c862",
+              IN_PROGRESS: "f7fade2b",
+              IN_REVIEW: "b10307a0",
+              TESTING: "c8a33234",
+              DONE: "98236657"
+            };
+
+            // Reverse map (optionId -> status name)
+            const REVERSE_MAP = Object.fromEntries(
+              Object.entries(STATUS_MAP).map(([k, v]) => [v, k])
+            );
+
+            const issues = await github.paginate(
+              github.rest.issues.listForRepo,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: "open"
+              }
+            );
+
+            for (const issue of issues) {
+
+              const query = `
+                query($owner: String!, $repo: String!, $issueNumber: Int!) {
+                  repository(owner: $owner, name: $repo) {
+                    issue(number: $issueNumber) {
+                      projectItems(first: 20) {
+                        nodes {
+                          id
+                          project { id }
+                          fieldValueByName(name: "Status") {
+                            ... on ProjectV2ItemFieldSingleSelectValue {
+                              optionId
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              `;
+
+              const result = await github.graphql(query, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issueNumber: issue.number
+              });
+
+              const item = result.repository.issue.projectItems.nodes.find(
+                i => i.project.id === PROJECT_ID
+              );
+
+              if (!item) continue;
+
+              const currentOptionId = item.fieldValueByName?.optionId;
+              const currentStatus = REVERSE_MAP[currentOptionId];
+
+              if (!currentStatus) continue;
+
+              const currentIndex = STATUS_FLOW.indexOf(currentStatus);
+
+              // Example: disallow skipping steps
+              const expectedNext = STATUS_FLOW[currentIndex + 1];
+
+              if (!expectedNext) continue;
+
+              // If someone jumps ahead (invalid)
+              if (currentIndex > STATUS_FLOW.indexOf(expectedNext)) {
+
+                console.log(`Invalid transition on issue #${issue.number}`);
+
+                const mutation = `
+                  mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+                    updateProjectV2ItemFieldValue(
+                      input: {
+                        projectId: $projectId
+                        itemId: $itemId
+                        fieldId: $fieldId
+                        value: { singleSelectOptionId: $optionId }
+                      }
+                    ) {
+                      projectV2Item { id }
+                    }
+                  }
+                `;
+
+                await github.graphql(mutation, {
+                  projectId: PROJECT_ID,
+                  itemId: item.id,
+                  fieldId: STATUS_FIELD_ID,
+                  optionId: STATUS_MAP[currentStatus]   // revert
+                });
+              }
+            }
