@@ -4,7 +4,7 @@ on:
   issues:
     types: [opened, edited]
   schedule:
-    - cron: "*/5 * * * *"   # every 5 mins (for project changes)
+    - cron: "*/5 * * * *"   # every 5 mins
   workflow_dispatch:
 
 permissions:
@@ -26,8 +26,7 @@ jobs:
             const PROJECT_ID = "PVT_kwDOEp-UH84BfO4c";
             const STATUS_FIELD_ID = "PVTSSF_lADOEp-UH84BfO4czhZjNrU";
 
-            const STATUS_FLOW = ["OPEN","IN_PROGRESS","IN_REVIEW","TESTING","DONE"];
-
+            // Status option IDs
             const STATUS_MAP = {
               OPEN: "1716c862",
               IN_PROGRESS: "f7fade2b",
@@ -36,13 +35,14 @@ jobs:
               DONE: "98236657"
             };
 
-             const ALLOWED_TRANSITIONS = {
-              [STATUS_MAP.OPEN]: [STATUS_MAP.IN_PROGRESS],
-              [STATUS_MAP.IN_PROGRESS]: [STATUS_MAP.IN_REVIEW],
-              [STATUS_MAP.IN_REVIEW]: [STATUS_MAP.TESTING],
-              [STATUS_MAP.TESTING]: [STATUS_MAP.DONE],
-              [STATUS_MAP.DONE]: []
-            };
+            // Strict workflow order
+            const FLOW = [
+              STATUS_MAP.OPEN,
+              STATUS_MAP.IN_PROGRESS,
+              STATUS_MAP.IN_REVIEW,
+              STATUS_MAP.TESTING,
+              STATUS_MAP.DONE
+            ];
 
             async function getProjectItem(issueNumber) {
               const query = `
@@ -102,49 +102,65 @@ jobs:
             }
 
             async function processIssue(issueNumber) {
-              const item = await getProjectItem(issueNumber);
+              try {
+                const item = await getProjectItem(issueNumber);
 
-              if (!item) {
-                console.log(`Issue #${issueNumber} not in project`);
-                return;
-              }
+                if (!item) {
+                  console.log(`Issue #${issueNumber} not in project`);
+                  return;
+                }
 
-              const current = item.fieldValueByName?.optionId;
+                const current = item.fieldValueByName?.optionId;
+                const currentName = item.fieldValueByName?.name;
 
-              console.log(`Issue #${issueNumber} current: ${current}`);
+                console.log(`Issue #${issueNumber} current status: ${currentName}`);
 
-              if (!current) {
-                console.log("No status → setting OPEN");
-                await updateStatus(item.id, STATUS_MAP.OPEN);
-                return;
-              }
+                // If no status → set OPEN
+                if (!current) {
+                  console.log("No status → setting OPEN");
+                  await updateStatus(item.id, STATUS_MAP.OPEN);
+                  return;
+                }
 
-              if (!(current in ALLOWED_TRANSITIONS)) {
-                console.log("Invalid state → resetting to OPEN");
-                await updateStatus(item.id, STATUS_MAP.OPEN);
-                return;
-              }
+                const index = FLOW.indexOf(current);
 
-              const allowedNext = ALLOWED_TRANSITIONS[current];
+                // Invalid status → reset
+                if (index === -1) {
+                  console.log("Invalid status → resetting to OPEN");
+                  await updateStatus(item.id, STATUS_MAP.OPEN);
+                  return;
+                }
 
-              if (allowedNext.length === 0) {
-                console.log("Already DONE");
-                return;
+                // Prevent skipping (e.g., OPEN → DONE)
+                if (index > 1) {
+                  const previousValid = FLOW[index - 1];
+                  console.log("Skipped steps → reverting to previous step");
+                  await updateStatus(item.id, previousValid);
+                  return;
+                }
+
+                console.log("Valid transition");
+              } catch (err) {
+                console.log(`Error processing issue #${issueNumber}:`, err);
               }
             }
 
-            // EVENT HANDLER
+            // 🔹 EVENT HANDLER
             if (context.eventName === "issues") {
               if (!context.payload.issue) {
                 console.log("No issue context");
                 return;
               }
+
               await processIssue(context.payload.issue.number);
+
             } else {
+              // Cron / manual run → scan all issues
               const issues = await github.rest.issues.listForRepo({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                state: "open"
+                state: "open",
+                per_page: 100
               });
 
               for (const issue of issues.data) {
