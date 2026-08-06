@@ -121,54 +121,6 @@ jobs:
               );
             }
 
-            async function getPreviousStatus(issueNumber, itemId) {
-              const query = `
-                query($owner: String!, $repo: String!, $issueNumber: Int!) {
-                  repository(owner: $owner, name: $repo) {
-                    issue(number: $issueNumber) {
-                      timelineItems(itemTypes: [PROJECT_V2_ITEM_FIELD_VALUE_CHANGED_EVENT], first: 50) {
-                        nodes {
-                          ... on ProjectV2ItemFieldValueChangedEvent {
-                            projectV2Item { id }
-                            fieldName
-                            previousValue {
-                              ... on ProjectV2ItemFieldSingleSelectValue {
-                                optionId
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              `;
-
-              try {
-                const result = await github.graphql(query, {
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issueNumber
-                });
-
-                const nodes = result.repository.issue.timelineItems.nodes || [];
-                for (let i = nodes.length - 1; i >= 0; i--) {
-                  const node = nodes[i];
-                  if (
-                    node.projectV2Item?.id === itemId &&
-                    node.fieldName === "Status" &&
-                    node.previousValue?.optionId
-                  ) {
-                    return node.previousValue.optionId;
-                  }
-                }
-              } catch (error) {
-                console.log(`Unable to determine previous status: ${error.message || error}`);
-              }
-
-              return null;
-            }
-
             async function processIssue(issueNumber) {
               const item = await getProjectItem(issueNumber);
 
@@ -200,13 +152,9 @@ jobs:
 
               // ❌ Prevent skipping (e.g., OPEN → TESTING / DONE)
               if (index > 1) {
-                console.log("Skipped stages → reverting to the previous valid status");
+                console.log("Skipped stages → reverting to the previous valid flow status");
 
-                const previousStatus = await getPreviousStatus(issueNumber, item.id);
-                const previous = previousStatus && FLOW.includes(previousStatus)
-                  ? previousStatus
-                  : FLOW[index - 1];
-
+                const previous = FLOW[index - 1];
                 await updateStatus(item.id, previous);
                 return;
               }
