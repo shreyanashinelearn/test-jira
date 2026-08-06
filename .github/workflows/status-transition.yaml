@@ -37,11 +37,11 @@ jobs:
             };
 
              const ALLOWED_TRANSITIONS = {
-              [STATUS.OPEN]: [STATUS.IN_PROGRESS],
-              [STATUS.IN_PROGRESS]: [STATUS.IN_REVIEW],
-              [STATUS.IN_REVIEW]: [STATUS.TESTING],
-              [STATUS.TESTING]: [STATUS.DONE],
-              [STATUS.DONE]: []
+              [STATUS_MAP.OPEN]: [STATUS_MAP.IN_PROGRESS],
+              [STATUS_MAP.IN_PROGRESS]: [STATUS_MAP.IN_REVIEW],
+              [STATUS_MAP.IN_REVIEW]: [STATUS_MAP.TESTING],
+              [STATUS_MAP.TESTING]: [STATUS_MAP.DONE],
+              [STATUS_MAP.DONE]: []
             };
 
             async function getProjectItem(issueNumber) {
@@ -115,13 +115,13 @@ jobs:
 
               if (!current) {
                 console.log("No status → setting OPEN");
-                await updateStatus(item.id, STATUS.OPEN);
+                await updateStatus(item.id, STATUS_MAP.OPEN);
                 return;
               }
 
               if (!(current in ALLOWED_TRANSITIONS)) {
                 console.log("Invalid state → resetting to OPEN");
-                await updateStatus(item.id, STATUS.OPEN);
+                await updateStatus(item.id, STATUS_MAP.OPEN);
                 return;
               }
 
