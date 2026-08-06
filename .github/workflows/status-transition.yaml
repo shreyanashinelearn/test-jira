@@ -28,7 +28,6 @@ jobs:
         with:
           github-token: ${{ secrets.PROJECT_TOKEN }}
           script: |
-            script: |
             let issue = context.payload.issue;
 
             // Handle manual trigger
