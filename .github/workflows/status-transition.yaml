@@ -152,12 +152,11 @@ jobs:
 
               // ❌ Prevent skipping (e.g., OPEN → TESTING / DONE)
               if (index > 1) {
-                console.log("Skipped stages → reverting to the previous valid flow status");
+              console.log("Skipped stages → resetting to OPEN");
 
-                const previous = FLOW[index - 1];
-                await updateStatus(item.id, previous);
-                return;
-              }
+              await updateStatus(item.id, STATUS.OPEN);
+              return;
+            }
 
               console.log("Valid status");
             }
