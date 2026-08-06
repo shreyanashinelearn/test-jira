@@ -36,170 +36,118 @@ jobs:
               DONE: "98236657"
             };
 
-            const REVERSE_MAP = Object.fromEntries(
-              Object.entries(STATUS_MAP).map(([k, v]) => [v, k])
-            );
+             const ALLOWED_TRANSITIONS = {
+              [STATUS.OPEN]: [STATUS.IN_PROGRESS],
+              [STATUS.IN_PROGRESS]: [STATUS.IN_REVIEW],
+              [STATUS.IN_REVIEW]: [STATUS.TESTING],
+              [STATUS.TESTING]: [STATUS.DONE],
+              [STATUS.DONE]: []
+            };
 
-            for (const issue of issues) {
+            async function getProjectItem(issueNumber) {
+              const query = `
+                query($owner: String!, $repo: String!, $issueNumber: Int!) {
+                  repository(owner: $owner, name: $repo) {
+                    issue(number: $issueNumber) {
+                      projectItems(first: 20) {
+                        nodes {
+                          id
+                          project { id }
+                          fieldValueByName(name: "Status") {
+                            ... on ProjectV2ItemFieldSingleSelectValue {
+                              optionId
+                              name
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              `;
 
               const result = await github.graphql(query, {
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issueNumber: issue.number
+                issueNumber
               });
 
-            const item = result.repository.issue.projectItems.nodes.find(
-              i => i.project.id === PROJECT_ID
-            );
-
-            if (!item) continue;
-
-            const currentOptionId = item.fieldValueByName?.optionId;
-            const currentStatus = REVERSE_MAP[currentOptionId];
-
-            if (!currentStatus) continue;
-
-            // 🟡 Get last known status from issue body/comment/label
-            const previousStatus = issue.labels.find(l => l.name.startsWith("status:"))?.name.replace("status:", "");
-
-            if (!previousStatus) {
-              // First time → store it
-              await github.rest.issues.addLabels({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issue.number,
-                labels: [`status:${currentStatus}`]
-              });
-              continue;
+              return result.repository.issue.projectItems.nodes.find(
+                item => item.project.id === PROJECT_ID
+              );
             }
 
-            const prevIndex = STATUS_FLOW.indexOf(previousStatus);
-            const currIndex = STATUS_FLOW.indexOf(currentStatus);
+            async function updateStatus(itemId, newStatus) {
+              const mutation = `
+                mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+                  updateProjectV2ItemFieldValue(
+                    input: {
+                      projectId: $projectId
+                      itemId: $itemId
+                      fieldId: $fieldId
+                      value: { singleSelectOptionId: $optionId }
+                    }
+                  ) {
+                    projectV2Item { id }
+                  }
+                }
+              `;
 
-            // ❌ If skipping steps
-            if (currIndex > prevIndex + 1) {
-
-              console.log(`Invalid transition on #${issue.number}: ${previousStatus} → ${currentStatus}`);
-
-              // revert
               await github.graphql(mutation, {
                 projectId: PROJECT_ID,
-                itemId: item.id,
+                itemId,
                 fieldId: STATUS_FIELD_ID,
-                optionId: STATUS_MAP[previousStatus]
+                optionId: newStatus
               });
-
-              continue;
             }
 
-            // ✅ Update stored status
-            await github.rest.issues.setLabels({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: issue.number,
-              labels: [`status:${currentStatus}`]
-            });}
-            # const STATUS_FLOW = [
-            #   "OPEN",
-            #   "IN_PROGRESS",
-            #   "IN_REVIEW",
-            #   "TESTING",
-            #   "DONE"
-            # ];
+            async function processIssue(issueNumber) {
+              const item = await getProjectItem(issueNumber);
 
-            # const STATUS_MAP = {
-            #   OPEN: "1716c862",
-            #   IN_PROGRESS: "f7fade2b",
-            #   IN_REVIEW: "b10307a0",
-            #   TESTING: "c8a33234",
-            #   DONE: "98236657"
-            # };
+              if (!item) {
+                console.log(`Issue #${issueNumber} not in project`);
+                return;
+              }
 
-            # // Reverse map (optionId -> status name)
-            # const REVERSE_MAP = Object.fromEntries(
-            #   Object.entries(STATUS_MAP).map(([k, v]) => [v, k])
-            # );
+              const current = item.fieldValueByName?.optionId;
 
-            # const issues = await github.paginate(
-            #   github.rest.issues.listForRepo,
-            #   {
-            #     owner: context.repo.owner,
-            #     repo: context.repo.repo,
-            #     state: "open"
-            #   }
-            # );
+              console.log(`Issue #${issueNumber} current: ${current}`);
 
-            # for (const issue of issues) {
+              if (!current) {
+                console.log("No status → setting OPEN");
+                await updateStatus(item.id, STATUS.OPEN);
+                return;
+              }
 
-            #   const query = `
-            #     query($owner: String!, $repo: String!, $issueNumber: Int!) {
-            #       repository(owner: $owner, name: $repo) {
-            #         issue(number: $issueNumber) {
-            #           projectItems(first: 20) {
-            #             nodes {
-            #               id
-            #               project { id }
-            #               fieldValueByName(name: "Status") {
-            #                 ... on ProjectV2ItemFieldSingleSelectValue {
-            #                   optionId
-            #                 }
-            #               }
-            #             }
-            #           }
-            #         }
-            #       }
-            #     }
-            #   `;
+              if (!(current in ALLOWED_TRANSITIONS)) {
+                console.log("Invalid state → resetting to OPEN");
+                await updateStatus(item.id, STATUS.OPEN);
+                return;
+              }
 
-            #   const result = await github.graphql(query, {
-            #     owner: context.repo.owner,
-            #     repo: context.repo.repo,
-            #     issueNumber: issue.number
-            #   });
+              const allowedNext = ALLOWED_TRANSITIONS[current];
 
-            #   const item = result.repository.issue.projectItems.nodes.find(
-            #     i => i.project.id === PROJECT_ID
-            #   );
+              if (allowedNext.length === 0) {
+                console.log("Already DONE");
+                return;
+              }
+            }
 
-            #   if (!item) continue;
+            // EVENT HANDLER
+            if (context.eventName === "issues") {
+              if (!context.payload.issue) {
+                console.log("No issue context");
+                return;
+              }
+              await processIssue(context.payload.issue.number);
+            } else {
+              const issues = await github.rest.issues.listForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: "open"
+              });
 
-            #   const currentOptionId = item.fieldValueByName?.optionId;
-            #   const currentStatus = REVERSE_MAP[currentOptionId];
-
-            #   if (!currentStatus) continue;
-
-            #   const currentIndex = STATUS_FLOW.indexOf(currentStatus);
-
-            #   // Example: disallow skipping steps
-            #   const expectedNext = STATUS_FLOW[currentIndex + 1];
-
-            #   if (!expectedNext) continue;
-
-            #   // If someone jumps ahead (invalid)
-            #   if (currentIndex > STATUS_FLOW.indexOf(expectedNext)) {
-
-            #     console.log(`Invalid transition on issue #${issue.number}`);
-
-            #     const mutation = `
-            #       mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
-            #         updateProjectV2ItemFieldValue(
-            #           input: {
-            #             projectId: $projectId
-            #             itemId: $itemId
-            #             fieldId: $fieldId
-            #             value: { singleSelectOptionId: $optionId }
-            #           }
-            #         ) {
-            #           projectV2Item { id }
-            #         }
-            #       }
-            #     `;
-
-            #     await github.graphql(mutation, {
-            #       projectId: PROJECT_ID,
-            #       itemId: item.id,
-            #       fieldId: STATUS_FIELD_ID,
-            #       optionId: STATUS_MAP[currentStatus]   // revert
-            #     });
-            #   }
-            # }
+              for (const issue of issues.data) {
+                await processIssue(issue.number);
+              }
+            }
