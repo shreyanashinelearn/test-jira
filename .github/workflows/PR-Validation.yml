@@ -37,7 +37,7 @@ jobs:
       - name: Check for merge conflict markers
         run: |
           echo "🔍 Checking for leftover merge conflict markers..."
-          if grep -rn '<<<<<<< \|======= \|>>>>>>> ' --include="*.yml" --include="*.yaml" --include="*.md" --include="*.py" --include="*.js" --include="*.ts" --include="*.java" . ; then
+          if grep -rn '<<<<<<< \|======= \|>>>>>>> ' --include="*.yml" --include="*.yaml" --include="*.md" --include="*.py" --include="*.js" --include="*.ts" --include="*.java" --exclude-dir=.github . ; then
             echo "❌ Found merge conflict markers!"
             exit 1
           fi
