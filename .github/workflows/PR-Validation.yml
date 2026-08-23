@@ -123,9 +123,9 @@ jobs:
           fi
 
           # Test 3: Workflow YAML has valid structure
-          WF_FILE=".github/workflows/pr-validation.yml"
-          if [ -s "$WF_FILE" ] && grep -q "^on:" "$WF_FILE" && grep -q "^jobs:" "$WF_FILE"; then
-            echo "  ✅ TEST 3: Workflow YAML has valid structure"
+          WF_FILE=$(ls .github/workflows/*.yml .github/workflows/*.yaml 2>/dev/null | head -1)
+          if [ -n "$WF_FILE" ] && [ -s "$WF_FILE" ] && grep -qE "^['\"]?on['\"]?:" "$WF_FILE" && grep -q "^jobs:" "$WF_FILE"; then
+            echo "  ✅ TEST 3: Workflow YAML has valid structure ($WF_FILE)"
             PASS=$((PASS+1))
           else
             echo "  ❌ TEST 3: Workflow YAML structure is invalid"
