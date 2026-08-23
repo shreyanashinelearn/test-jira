@@ -25,7 +25,7 @@ body:
     id: narappname
     attributes:
       label: NAR Application Name
-  
+
   - type: textarea
     id: Issuelink
     attributes:
