@@ -1,0 +1,146 @@
+name: PR Validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  validate:
+    name: Validate PR
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ---- Lint / Quality Checks ----
+
+      - name: Check for trailing whitespace
+        run: |
+          echo "🔍 Checking for trailing whitespace..."
+          if grep -rn ' $' --include="*.yml" --include="*.yaml" --include="*.md" --include="*.txt" --include="*.json" . ; then
+            echo "❌ Found trailing whitespace in the above files"
+            exit 1
+          fi
+          echo "✅ No trailing whitespace found"
+
+      - name: Validate YAML files
+        run: |
+          echo "🔍 Validating YAML files..."
+          sudo apt-get install -y yamllint > /dev/null 2>&1
+          find . -name '*.yml' -o -name '*.yaml' | head -20 | while read file; do
+            echo "  Checking: $file"
+            yamllint -d relaxed "$file"
+          done
+          echo "✅ All YAML files are valid"
+
+      - name: Check for merge conflict markers
+        run: |
+          echo "🔍 Checking for leftover merge conflict markers..."
+          if grep -rn '<<<<<<< \|======= \|>>>>>>> ' --include="*.yml" --include="*.yaml" --include="*.md" --include="*.py" --include="*.js" --include="*.ts" --include="*.java" . ; then
+            echo "❌ Found merge conflict markers!"
+            exit 1
+          fi
+          echo "✅ No merge conflict markers found"
+
+      # ---- Build Checks ----
+
+      - name: Verify required files exist
+        run: |
+          echo "🔍 Checking required files..."
+          MISSING=0
+          for file in README.md; do
+            if [ -f "$file" ]; then
+              echo "  ✅ $file exists"
+            else
+              echo "  ❌ $file is missing"
+              MISSING=1
+            fi
+          done
+          if [ $MISSING -eq 1 ]; then
+            exit 1
+          fi
+          echo "✅ All required files present"
+
+      - name: Check file size limit (no files > 5MB)
+        run: |
+          echo "🔍 Checking for large files..."
+          LARGE_FILES=$(find . -type f -size +5M -not -path './.git/*')
+          if [ -n "$LARGE_FILES" ]; then
+            echo "❌ Found files larger than 5MB:"
+            echo "$LARGE_FILES"
+            exit 1
+          fi
+          echo "✅ No oversized files found"
+
+      - name: Validate JSON files
+        run: |
+          echo "🔍 Validating JSON files..."
+          FOUND=0
+          FAILED=0
+          find . -name '*.json' -not -path './.git/*' | head -20 | while read file; do
+            FOUND=1
+            if python3 -m json.tool "$file" > /dev/null 2>&1; then
+              echo "  ✅ $file"
+            else
+              echo "  ❌ $file is invalid JSON"
+              exit 1
+            fi
+          done
+          echo "✅ All JSON files are valid"
+
+      # ---- Tests ----
+
+      - name: Run sample unit tests
+        run: |
+          echo "🧪 Running sample tests..."
+
+          PASS=0
+          FAIL=0
+
+          # Test 1: README exists and is not empty
+          if [ -s "README.md" ]; then
+            echo "  ✅ TEST 1: README.md exists and is not empty"
+            PASS=$((PASS+1))
+          else
+            echo "  ❌ TEST 1: README.md is missing or empty"
+            FAIL=$((FAIL+1))
+          fi
+
+          # Test 2: No TODO/FIXME in workflow files
+          if grep -rq 'TODO\|FIXME' .github/workflows/ 2>/dev/null; then
+            echo "  ❌ TEST 2: Found TODO/FIXME in workflow files"
+            FAIL=$((FAIL+1))
+          else
+            echo "  ✅ TEST 2: No TODO/FIXME in workflow files"
+            PASS=$((PASS+1))
+          fi
+
+          # Test 3: Workflow YAML is valid
+          if python3 -c "import yaml; yaml.safe_load(open('.github/workflows/pr-validation.yml'))" 2>/dev/null; then
+            echo "  ✅ TEST 3: Workflow YAML is parseable"
+            PASS=$((PASS+1))
+          else
+            echo "  ❌ TEST 3: Workflow YAML is not parseable"
+            FAIL=$((FAIL+1))
+          fi
+
+          echo ""
+          echo "📊 Results: $PASS passed, $FAIL failed"
+
+          if [ $FAIL -gt 0 ]; then
+            exit 1
+          fi
+          echo "✅ All tests passed!"
+
+      - name: PR summary
+        if: always()
+        run: |
+          echo "====================================="
+          echo "  📋 PR Validation Summary"
+          echo "====================================="
+          echo "  Branch:  ${{ github.head_ref }}"
+          echo "  Target:  ${{ github.base_ref }}"
+          echo "  PR:      #${{ github.event.pull_request.number }}"
+          echo "  Author:  ${{ github.event.pull_request.user.login }}"
+          echo "====================================="
