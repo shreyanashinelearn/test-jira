@@ -1,8 +1,9 @@
+---
 name: Feature
-description: Create a Issue Type - Feature
+description: Create an Issue Type - Feature
 title: "Feature: "
-labels: ["Feature"]
-
+labels:
+  - Feature
 body:
   - type: input
     id: summary
@@ -11,7 +12,6 @@ body:
       placeholder: Short description of the Feature
     validations:
       required: true
-
   - type: textarea
     id: description
     attributes:
@@ -20,20 +20,17 @@ body:
       placeholder: Explain the Feature description here
     validations:
       required: true
-
   - type: input
     id: narappname
     attributes:
       label: NAR Application Name
-  
   - type: input
-    id: Link
+    id: epic_link
     attributes:
       label: Epic link/Parent link
       placeholder: https://github.com/example/repo/issues/1
-
   - type: textarea
-    id: Components
+    id: components
     attributes:
       label: Components
       description: Explain in detail
