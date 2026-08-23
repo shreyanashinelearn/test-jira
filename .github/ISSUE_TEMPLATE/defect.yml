@@ -25,13 +25,13 @@ body:
     id: narappname
     attributes:
       label: NAR Application Name
-  
+
   - type: input
     id: TestSummary
     attributes:
       label: Test Summary
       placeholder: Short description of the Test Summary
-      
+
   - type: textarea
     id: TestDescription
     attributes:
