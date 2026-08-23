@@ -1,6 +1,6 @@
 ---
 name: Feature
-description: Create a Issue Type - Feature
+description: Create an Issue Type - Feature
 title: "Feature: "
 labels:
   - Feature
@@ -25,12 +25,12 @@ body:
     attributes:
       label: NAR Application Name
   - type: input
-    id: Link
+    id: epic_link
     attributes:
       label: Epic link/Parent link
       placeholder: https://github.com/example/repo/issues/1
   - type: textarea
-    id: Components
+    id: components
     attributes:
       label: Components
       description: Explain in detail
