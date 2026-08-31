@@ -1,33 +1,42 @@
+---
 name: Issue Status Update
-
 on:
   pull_request:
-    types: [opened, reopened, edited]
-
+    types:
+      - opened
+      - reopened
+      - edited
 jobs:
   update-linked-issues:
     name: Mark linked issues as In Progress
     runs-on: ubuntu-latest
-
     steps:
       - name: Update linked issues to In Progress
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.PROJECT_PAT }}
-          script: |
+          script: >
             const prBody = context.payload.pull_request.body || '';
+
             const prTitle = context.payload.pull_request.title || '';
+
             const branchName = context.payload.pull_request.head.ref || '';
+
             const owner = context.repo.owner;
+
             const repo = context.repo.repo;
 
+
             // --- Step 1: Extract linked issue numbers ---
+
             const patterns = [
               /(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*#(\d+)/gi,
               /(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+https?:\/\/github\.com\/[^/]+\/[^/]+\/issues\/(\d+)/gi
             ];
 
+
             const issueNumbers = new Set();
+
 
             for (const text of [prBody, prTitle]) {
               for (const pattern of patterns) {
@@ -38,10 +47,13 @@ jobs:
               }
             }
 
+
             const branchMatch = branchName.match(/(?:issue|bug|feat|feature)[/-](\d+)/i);
+
             if (branchMatch) {
               issueNumbers.add(parseInt(branchMatch[1]));
             }
+
 
             if (issueNumbers.size === 0) {
               console.log('ℹ️ No linked issues found.');
@@ -49,10 +61,14 @@ jobs:
               return;
             }
 
+
             console.log(`🔍 Found linked issues: ${[...issueNumbers].map(n => '#' + n).join(', ')}`);
 
+
             // --- Step 2: Get the project from the PR itself ---
+
             const prNumber = context.payload.pull_request.number;
+
             const prProjectsQuery = await github.graphql(`
               query($owner: String!, $repo: String!, $prNumber: Int!) {
                 repository(owner: $owner, name: $repo) {
@@ -72,19 +88,27 @@ jobs:
               }
             `, { owner, repo, prNumber });
 
+
             const projectItems = prProjectsQuery.repository.pullRequest.projectItems.nodes;
+
 
             if (projectItems.length === 0) {
               core.setFailed('❌ This PR is not added to any project. Add the PR to a GitHub Project first.');
               return;
             }
 
+
             const projectId = projectItems[0].project.id;
+
             const projectTitle = projectItems[0].project.title;
+
             const projectNum = projectItems[0].project.number;
+
             console.log(`✅ PR is in project: "${projectTitle}" (#${projectNum})`);
 
+
             // --- Step 3: Get the Status field and its options ---
+
             const fieldQuery = await github.graphql(`
               query($projectId: ID!) {
                 node(id: $projectId) {
@@ -106,18 +130,22 @@ jobs:
               }
             `, { projectId });
 
+
             const statusField = fieldQuery.node.fields.nodes.find(
               f => f.name && f.name.toLowerCase() === 'status'
             );
+
 
             if (!statusField) {
               core.setFailed('❌ No "Status" field found in the project.');
               return;
             }
 
+
             const inProgressOption = statusField.options.find(
               o => o.name.toLowerCase() === 'in progress'
             );
+
 
             if (!inProgressOption) {
               const available = statusField.options.map(o => o.name).join(', ');
@@ -125,9 +153,12 @@ jobs:
               return;
             }
 
+
             console.log(`✅ Status field: "${statusField.name}" → Target: "${inProgressOption.name}"`);
 
+
             // --- Step 4: Update each linked issue ---
+
             for (const issueNumber of issueNumbers) {
               try {
                 // Get the issue node ID
