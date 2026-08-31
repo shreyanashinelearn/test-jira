@@ -1,8 +1,34 @@
 ---
 environment: production
+
 classes:
   nfs::server:
     exports:
       - /srv/share1
       - /srv/share3
+    manage_service: true
+    manage_package: true
+    service_enable: true
+
+  monitoring:
+    enabled: true
+    interval: 60
+
+  backup:
+    enabled: true
+    schedule: daily
+
 parameters:
+  server_name: nfs-prod-01
+  owner: infrastructure-team
+  region: ap-south-1
+  environment_type: production
+  log_level: info
+  max_connections: 100
+  backup_retention_days: 30
+
+metadata:
+  application: file-services
+  managed_by: puppet
+  criticality: high
+  description: "Production NFS server configuration"
