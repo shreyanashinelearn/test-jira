@@ -15,7 +15,7 @@ jobs:
         env:
           PROJECT_NUMBER: ${{ vars.PROJECT_NUMBER }}
         with:
-          github-token: ${{ secrets.PROJECT_PAT }}
+          github-token: ${{ secrets.PROJECT_TOKEN }}
           script: |
             const prBody = context.payload.pull_request.body || '';
             const prTitle = context.payload.pull_request.title || '';
