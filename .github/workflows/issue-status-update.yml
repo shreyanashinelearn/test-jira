@@ -2,7 +2,7 @@ name: Issue Status Update
 
 on:
   pull_request:
-    types: [opened, reopened, edited]
+    types: [opened, reopened]
 
 jobs:
   update-linked-issues:
@@ -12,22 +12,14 @@ jobs:
     steps:
       - name: Update linked issues to In Progress
         uses: actions/github-script@v7
-        env:
-          PROJECT_NUMBER: ${{ vars.PROJECT_NUMBER }}
         with:
-          github-token: ${{ secrets.PROJECT_TOKEN }}
+          github-token: ${{ secrets.PROJECT_PAT }}
           script: |
             const prBody = context.payload.pull_request.body || '';
             const prTitle = context.payload.pull_request.title || '';
             const branchName = context.payload.pull_request.head.ref || '';
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const projectNumber = parseInt(process.env.PROJECT_NUMBER);
-
-            if (!projectNumber) {
-              core.setFailed('❌ PROJECT_NUMBER variable is not set. Go to Settings → Variables → Actions and add it.');
-              return;
-            }
 
             // --- Step 1: Extract linked issue numbers ---
             const patterns = [
@@ -59,35 +51,38 @@ jobs:
 
             console.log(`🔍 Found linked issues: ${[...issueNumbers].map(n => '#' + n).join(', ')}`);
 
-            // --- Step 2: Get the Project ID ---
-            const projectQuery = await github.graphql(`
-              query($owner: String!, $number: Int!) {
-                user(login: $owner) {
-                  projectV2(number: $number) {
-                    id
-                  }
-                }
-              }
-            `, { owner, number: projectNumber }).catch(() => null);
-
-            // Try org if user query fails
-            let projectId;
-            if (projectQuery?.user?.projectV2?.id) {
-              projectId = projectQuery.user.projectV2.id;
-            } else {
-              const orgQuery = await github.graphql(`
-                query($owner: String!, $number: Int!) {
-                  organization(login: $owner) {
-                    projectV2(number: $number) {
-                      id
+            // --- Step 2: Get the project from the PR itself ---
+            const prNumber = context.payload.pull_request.number;
+            const prProjectsQuery = await github.graphql(`
+              query($owner: String!, $repo: String!, $prNumber: Int!) {
+                repository(owner: $owner, name: $repo) {
+                  pullRequest(number: $prNumber) {
+                    projectItems(first: 10) {
+                      nodes {
+                        id
+                        project {
+                          id
+                          number
+                          title
+                        }
+                      }
                     }
                   }
                 }
-              `, { owner, number: projectNumber });
-              projectId = orgQuery.organization.projectV2.id;
+              }
+            `, { owner, repo, prNumber });
+
+            const projectItems = prProjectsQuery.repository.pullRequest.projectItems.nodes;
+
+            if (projectItems.length === 0) {
+              core.setFailed('❌ This PR is not added to any project. Add the PR to a GitHub Project first.');
+              return;
             }
 
-            console.log(`✅ Found project: ${projectId}`);
+            const projectId = projectItems[0].project.id;
+            const projectTitle = projectItems[0].project.title;
+            const projectNum = projectItems[0].project.number;
+            console.log(`✅ PR is in project: "${projectTitle}" (#${projectNum})`);
 
             // --- Step 3: Get the Status field and its options ---
             const fieldQuery = await github.graphql(`
