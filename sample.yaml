@@ -8,7 +8,6 @@ classes:
       - /srv/share3
     manage_service: true
     manage_package: true
-    service_enable: true
 
   monitoring:
     enabled: true
